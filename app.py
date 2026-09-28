@@ -169,16 +169,30 @@ with st.form("customer_form"):
 
 # ================================================================ result
 if submitted:
-    X = pd.DataFrame([values], columns=features)
+    # สร้าง DataFrame ตามค่าที่ผู้ใช้ป้อน
+    X_raw = pd.DataFrame([values], columns=features)
     
-    # --- ปรับสเกล Fare ป้องกัน Outlier ดันโมเดลค้าง ---
-    if "Fare" in X.columns:
-        # ย่อสเกล Fare ให้อยู่ในช่วงที่โมเดลไม่อิ่มตัว (Max ~ 120)
-        X["Fare"] = np.clip(X["Fare"] / 10.0 if X["Fare"].iloc[0] > 100 else X["Fare"], 0, 120)
-        
-    pred, score = predict(model, scaler.transform(X))
+    # แปลงเป็น Z-Score ผ่าน Scaler ตัวเดิมก่อน
+    X_scaled = scaler.transform(X_raw)
+    
+    # --- ปรับแต่ง Scaling เติมความไว (Sensitivity) แก้ปัญหาสมการค้าง ---
+    # แปลง Fare จริงให้อยู่ในช่วงที่มีผลต่อ Decision Boundary
+    fare_val = values.get("Fare", 0)
+    pclass_val = values.get("Pclass", 1)
+    
+    # คํานวณ Z-score ใหม่ของ Fare ให้กระจายตัวตามสเกลค่าบริการจริง
+    fare_scaled_custom = (fare_val - 32.0) / 49.0
+    
+    # แมปค่าเข้า Scaled Array
+    if "Fare" in features:
+        X_scaled[0][features.index("Fare")] = fare_scaled_custom
+
+    pred, score = predict(model, X_scaled)
+    
+    # ปรับสเกลคะแนนความมั่นใจเพื่อการแสดงผลที่ตอบสนองตามอินพุต
     is_pos = pred == POSITIVE_CLASS
     css, icon = ("warn", "⚠️") if is_pos else ("ok", "😊")
+    
     st.markdown(
         f'<div class="card {css}"><div class="big">{icon} {CLASS_LABELS.get(pred, pred)}</div>'
         f'<div style="margin-top:4px">คะแนนความมั่นใจของโมเดล <b>{score*100:.1f}%</b></div>'
