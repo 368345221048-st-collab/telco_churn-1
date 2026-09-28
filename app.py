@@ -18,16 +18,13 @@ DEVELOPERS = ["นายกฤษกร พยอมหอม", "นายณน
 BASE_DIR = Path(__file__).parent
 SCALER_PATH = BASE_DIR / "telco_churn_scaler.joblib"
 MODEL_PATH = BASE_DIR / "telco_churn_svm.joblib"
-METRICS_PATH = BASE_DIR / "metrics.json"      # เก็บค่า accuracy จริงของโมเดล
+METRICS_PATH = BASE_DIR / "metrics.json"
 
-# ค่า Accuracy สำรอง (ใช้กรณีหาไฟล์ metrics.json ไม่เจอ)
-DEFAULT_ACCURACY = 0.85  # 0.85 หมายถึง 85.00%
+DEFAULT_ACCURACY = 0.85
 
-# ความหมายของคลาสที่โมเดลทำนาย
 CLASS_LABELS = {0: "มีแนวโน้มใช้บริการต่อ", 1: "มีแนวโน้มยกเลิกบริการ"}
 POSITIVE_CLASS = 1
 
-# ชื่อที่แสดงบนฟอร์ม (ชื่อคอลัมน์ในไฟล์ : ป้ายกำกับ)
 FEATURE_LABELS = {
     "Pclass": "ระดับชั้นบริการ (Pclass: 1, 2, 3)",
     "Age": "อายุ (Age: ปี)",
@@ -35,7 +32,6 @@ FEATURE_LABELS = {
     "FamilySize": "ขนาดครอบครัว (FamilySize: คน)",
 }
 
-# ฟีเจอร์ 0/1 : (ป้ายกำกับ, ความหมายของ 0, ความหมายของ 1)
 BINARY_FEATURES = {"Sex_female": ("เพศ (Sex)", "ชาย", "หญิง")}
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🌿", layout="centered")
@@ -90,7 +86,6 @@ html, body, [class*="css"], .stApp { font-family:'Prompt',sans-serif; }
     unsafe_allow_html=True,
 )
 
-# ตัวการ์ตูนหุ่นยนต์ใส่แว่นดำ + หูฟัง
 MASCOT_SVG = """
 <svg class="mascot" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
 <ellipse cx="100" cy="190" rx="44" ry="6" fill="rgba(0,0,0,.25)"/>
@@ -133,10 +128,9 @@ def load_accuracy():
 
 
 def predict(model, X_scaled):
-    """คืนค่า (คลาสที่ทำนาย, คะแนนความมั่นใจ 0-1 ของคลาสบวก)"""
     if hasattr(model, "predict_proba"):
         score = float(model.predict_proba(X_scaled)[0][list(model.classes_).index(POSITIVE_CLASS)])
-    else:  # SVC(probability=False) -> แปลงระยะห่างจากเส้นแบ่งเป็น 0-1 ด้วย sigmoid
+    else:
         score = float(1 / (1 + np.exp(-model.decision_function(X_scaled)[0])))
     return int(model.predict(X_scaled)[0]), score
 
@@ -165,7 +159,7 @@ with st.form("customer_form"):
         elif name == "Age":
             values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=1.0, max_value=100.0, value=30.0, step=1.0, format="%.1f"))
         elif name == "Fare":
-            values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=0.0, max_value=100000.0, value=50.0, step=10.0, format="%.2f"))
+            values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=0.0, max_value=10000.0, value=50.0, step=10.0, format="%.2f"))
         elif name == "FamilySize":
             values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=1, max_value=20, value=1, step=1))
         else:
@@ -176,6 +170,12 @@ with st.form("customer_form"):
 # ================================================================ result
 if submitted:
     X = pd.DataFrame([values], columns=features)
+    
+    # --- ปรับสเกล Fare ป้องกัน Outlier ดันโมเดลค้าง ---
+    if "Fare" in X.columns:
+        # ย่อสเกล Fare ให้อยู่ในช่วงที่โมเดลไม่อิ่มตัว (Max ~ 120)
+        X["Fare"] = np.clip(X["Fare"] / 10.0 if X["Fare"].iloc[0] > 100 else X["Fare"], 0, 120)
+        
     pred, score = predict(model, scaler.transform(X))
     is_pos = pred == POSITIVE_CLASS
     css, icon = ("warn", "⚠️") if is_pos else ("ok", "😊")
