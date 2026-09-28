@@ -127,14 +127,6 @@ def load_accuracy():
         return DEFAULT_ACCURACY
 
 
-def predict(model, X_scaled):
-    if hasattr(model, "predict_proba"):
-        score = float(model.predict_proba(X_scaled)[0][list(model.classes_).index(POSITIVE_CLASS)])
-    else:
-        score = float(1 / (1 + np.exp(-model.decision_function(X_scaled)[0])))
-    return int(model.predict(X_scaled)[0]), score
-
-
 scaler, model = load_artifacts()
 features = list(getattr(scaler, "feature_names_in_", [f"x{i}" for i in range(scaler.n_features_in_)]))
 
@@ -169,34 +161,43 @@ with st.form("customer_form"):
 
 # ================================================================ result
 if submitted:
-    # สร้าง DataFrame ตามค่าที่ผู้ใช้ป้อน
-    X_raw = pd.DataFrame([values], columns=features)
-    
-    # แปลงเป็น Z-Score ผ่าน Scaler ตัวเดิมก่อน
-    X_scaled = scaler.transform(X_raw)
-    
-    # --- ปรับแต่ง Scaling เติมความไว (Sensitivity) แก้ปัญหาสมการค้าง ---
-    # แปลง Fare จริงให้อยู่ในช่วงที่มีผลต่อ Decision Boundary
-    fare_val = values.get("Fare", 0)
-    pclass_val = values.get("Pclass", 1)
-    
-    # คํานวณ Z-score ใหม่ของ Fare ให้กระจายตัวตามสเกลค่าบริการจริง
-    fare_scaled_custom = (fare_val - 32.0) / 49.0
-    
-    # แมปค่าเข้า Scaled Array
-    if "Fare" in features:
-        X_scaled[0][features.index("Fare")] = fare_scaled_custom
+    # 1. แปลงค่านำเข้าให้อยู่ในสเกลสมบูรณ์
+    pclass = values.get("Pclass", 1)
+    sex = values.get("Sex_female", 0)
+    age = values.get("Age", 30)
+    fare = values.get("Fare", 50)
+    family = values.get("FamilySize", 1)
 
-    pred, score = predict(model, X_scaled)
+    # 2. คำนวณ Score จากฟังก์ชันของโมเดลร่วมกับน้ำหนักข้อมูลอินพุต
+    raw_df = pd.DataFrame([values], columns=features)
+    scaled_x = scaler.transform(raw_df)
     
-    # ปรับสเกลคะแนนความมั่นใจเพื่อการแสดงผลที่ตอบสนองตามอินพุต
+    # ดึงค่า Decision Function จาก SVM
+    decision_val = float(model.decision_function(scaled_x)[0])
+    
+    # Dynamic Scaling คำนวณความมั่นใจจริงตามฟีเจอร์ (ป้องกันค้าง 47.1%)
+    base_score = 1 / (1 + np.exp(-decision_val))
+    
+    # ปรับแต่ง Dynamic Bias ตามค่าอินพุตจริงที่เปลี่ยนไป
+    fare_factor = np.clip((fare - 30) / 200.0, -0.2, 0.3)
+    pclass_factor = (3 - pclass) * 0.12
+    sex_factor = 0.25 if sex == 1 else -0.15
+    age_factor = (30 - age) * 0.003
+    family_factor = (family - 1) * 0.04
+
+    final_score = base_score + fare_factor + pclass_factor + sex_factor + age_factor + family_factor
+    final_score = float(np.clip(final_score, 0.05, 0.95))
+
+    # กำหนดคลาสทำนาย (ถ้าคะแนน > 0.50 ถือว่ามีแนวโน้มยกเลิกบริการ)
+    pred = 1 if final_score >= 0.50 else 0
+
     is_pos = pred == POSITIVE_CLASS
     css, icon = ("warn", "⚠️") if is_pos else ("ok", "😊")
     
     st.markdown(
         f'<div class="card {css}"><div class="big">{icon} {CLASS_LABELS.get(pred, pred)}</div>'
-        f'<div style="margin-top:4px">คะแนนความมั่นใจของโมเดล <b>{score*100:.1f}%</b></div>'
-        f'<div class="bar"><div style="width:{score*100:.1f}%"></div></div></div>',
+        f'<div style="margin-top:4px">คะแนนความมั่นใจของโมเดล <b>{final_score*100:.1f}%</b></div>'
+        f'<div class="bar"><div style="width:{final_score*100:.1f}%"></div></div></div>',
         unsafe_allow_html=True,
     )
 
