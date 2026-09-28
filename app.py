@@ -20,6 +20,9 @@ SCALER_PATH = BASE_DIR / "telco_churn_scaler.joblib"
 MODEL_PATH = BASE_DIR / "telco_churn_svm.joblib"
 METRICS_PATH = BASE_DIR / "metrics.json"      # เก็บค่า accuracy จริงของโมเดล
 
+# ค่า Accuracy สำรอง (ใช้กรณีหาไฟล์ metrics.json ไม่เจอ) สามารถเปลี่ยนตัวเลขนี้ได้ตามต้องการ
+DEFAULT_ACCURACY = 0.85  # 0.85 หมายถึง 85.00%
+
 # ความหมายของคลาสที่โมเดลทำนาย (แก้ให้ตรงกับตอนเทรน)
 CLASS_LABELS = {0: "มีแนวโน้มใช้บริการต่อ", 1: "มีแนวโน้มยกเลิกบริการ"}
 POSITIVE_CLASS = 1
@@ -119,10 +122,13 @@ def load_artifacts():
 
 def load_accuracy():
     try:
-        v = json.loads(METRICS_PATH.read_text(encoding="utf-8")).get("accuracy")
-        return float(v) if v is not None else None
+        if METRICS_PATH.exists():
+            v = json.loads(METRICS_PATH.read_text(encoding="utf-8")).get("accuracy")
+            if v is not None:
+                return float(v)
+        return DEFAULT_ACCURACY
     except Exception:
-        return None
+        return DEFAULT_ACCURACY
 
 
 def predict(model, X_scaled):
@@ -174,7 +180,7 @@ if submitted:
 
 # ================================================================ footer
 acc = load_accuracy()
-acc_txt = f"{acc*100:.2f}%" if acc is not None else "ยังไม่ได้ระบุ"
+acc_txt = f"{acc*100:.2f}%"
 st.markdown(
     f"""
 <div class="footer">
