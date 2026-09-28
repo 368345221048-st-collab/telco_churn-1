@@ -20,20 +20,21 @@ SCALER_PATH = BASE_DIR / "telco_churn_scaler.joblib"
 MODEL_PATH = BASE_DIR / "telco_churn_svm.joblib"
 METRICS_PATH = BASE_DIR / "metrics.json"      # เก็บค่า accuracy จริงของโมเดล
 
-# ค่า Accuracy สำรอง (ใช้กรณีหาไฟล์ metrics.json ไม่เจอ) สามารถเปลี่ยนตัวเลขนี้ได้ตามต้องการ
+# ค่า Accuracy สำรอง (ใช้กรณีหาไฟล์ metrics.json ไม่เจอ)
 DEFAULT_ACCURACY = 0.85  # 0.85 หมายถึง 85.00%
 
-# ความหมายของคลาสที่โมเดลทำนาย (แก้ให้ตรงกับตอนเทรน)
+# ความหมายของคลาสที่โมเดลทำนาย
 CLASS_LABELS = {0: "มีแนวโน้มใช้บริการต่อ", 1: "มีแนวโน้มยกเลิกบริการ"}
 POSITIVE_CLASS = 1
 
-# ชื่อที่แสดงบนฟอร์ม (ชื่อคอลัมน์ในไฟล์ scaler : ป้ายกำกับ)
+# ชื่อที่แสดงบนฟอร์ม (ชื่อคอลัมน์ในไฟล์ : ป้ายกำกับ)
 FEATURE_LABELS = {
-    "Pclass": "ระดับชั้น (Pclass)",
-    "Age": "อายุ (Age)",
-    "Fare": "ค่าบริการ (Fare)",
-    "FamilySize": "ขนาดครอบครัว (FamilySize)",
+    "Pclass": "ระดับชั้นบริการ (Pclass: 1, 2, 3)",
+    "Age": "อายุ (Age: ปี)",
+    "Fare": "ค่าบริการ (Fare: บาท/ด.)",
+    "FamilySize": "ขนาดครอบครัว (FamilySize: คน)",
 }
+
 # ฟีเจอร์ 0/1 : (ป้ายกำกับ, ความหมายของ 0, ความหมายของ 1)
 BINARY_FEATURES = {"Sex_female": ("เพศ (Sex)", "ชาย", "หญิง")}
 
@@ -89,7 +90,7 @@ html, body, [class*="css"], .stApp { font-family:'Prompt',sans-serif; }
     unsafe_allow_html=True,
 )
 
-# ตัวการ์ตูนหุ่นยนต์ใส่แว่นดำ + หูฟัง (SVG ในโค้ด ไม่ต้องใช้ไฟล์ภาพ)
+# ตัวการ์ตูนหุ่นยนต์ใส่แว่นดำ + หูฟัง
 MASCOT_SVG = """
 <svg class="mascot" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
 <ellipse cx="100" cy="190" rx="44" ry="6" fill="rgba(0,0,0,.25)"/>
@@ -155,14 +156,21 @@ values = {}
 with st.form("customer_form"):
     cols = st.columns(2)
     for i, name in enumerate(features):
-        col, mean = cols[i % 2], float(scaler.mean_[i])
+        col = cols[i % 2]
         if name in BINARY_FEATURES:
             label, zero, one = BINARY_FEATURES[name]
-            values[name] = float(col.selectbox(label, [zero, one], index=int(mean >= 0.5)) == one)
+            values[name] = float(col.selectbox(label, [zero, one], index=0) == one)
+        elif name == "Pclass":
+            values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=1, max_value=3, value=1, step=1))
+        elif name == "Age":
+            values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=1.0, max_value=100.0, value=30.0, step=1.0, format="%.1f"))
+        elif name == "Fare":
+            values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=0.0, max_value=100000.0, value=50.0, step=10.0, format="%.2f"))
+        elif name == "FamilySize":
+            values[name] = float(col.number_input(FEATURE_LABELS.get(name, name), min_value=1, max_value=20, value=1, step=1))
         else:
-            values[name] = col.number_input(
-                FEATURE_LABELS.get(name, name), value=round(mean, 3), step=0.01, format="%.3f"
-            )
+            values[name] = col.number_input(FEATURE_LABELS.get(name, name), value=0.0, step=0.1, format="%.2f")
+
     submitted = st.form_submit_button("🔍 ทำนายผล")
 
 # ================================================================ result
